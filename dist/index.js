@@ -60,9 +60,12 @@ function run() {
             const failOnFailure = core.getInput('fail_on_failure') === 'true';
             const requireTests = core.getInput('require_tests') === 'true';
             const includePassed = core.getInput('include_passed') === 'true';
+            const excludeSources = core.getInput('exclude_sources')
+                ? core.getInput('exclude_sources').split(',')
+                : [];
             core.endGroup();
             core.startGroup(`📦 Process test results`);
-            const testResult = yield (0, testParser_1.parseTestReports)(reportPaths, suiteRegex, includePassed, checkTitleTemplate);
+            const testResult = yield (0, testParser_1.parseTestReports)(reportPaths, suiteRegex, includePassed, excludeSources, checkTitleTemplate);
             const foundResults = testResult.count > 0 || testResult.skipped > 0;
             const title = foundResults
                 ? `${testResult.count} tests run, ${testResult.skipped} skipped, ${testResult.annotations.length} failed.`
@@ -173,7 +176,7 @@ var __asyncValues = (this && this.__asyncValues) || function (o) {
     function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.parseTestReports = exports.parseFile = exports.resolvePath = exports.resolveFileAndLine = void 0;
+exports.escapeEmoji = exports.parseTestReports = exports.parseFile = exports.resolvePath = exports.resolveFileAndLine = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const glob = __importStar(__nccwpck_require__(8090));
 const fs = __importStar(__nccwpck_require__(7147));
@@ -239,7 +242,7 @@ function safeParseInt(line) {
  * Modification Copyright 2021 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
-function resolvePath(fileName) {
+function resolvePath(fileName, excludeSources) {
     var e_1, _a;
     return __awaiter(this, void 0, void 0, function* () {
         core.debug(`Resolving path for ${fileName}`);
@@ -252,7 +255,8 @@ function resolvePath(fileName) {
             for (var _b = __asyncValues(globber.globGenerator()), _c; _c = yield _b.next(), !_c.done;) {
                 const result = _c.value;
                 core.debug(`Matched file: ${result}`);
-                if (!result.includes('/build/')) {
+                const found = excludeSources.find(v => result.includes(v));
+                if (!found) {
                     const path = result.slice(searchPath.length + 1);
                     core.debug(`Resolved path: ${path}`);
                     return path;
@@ -277,18 +281,18 @@ exports.resolvePath = resolvePath;
  * Modification Copyright 2021 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
-function parseFile(file, suiteRegex = '', includePassed = false, checkTitleTemplate = undefined) {
+function parseFile(file, suiteRegex = '', includePassed = false, excludeSources = ['/build/', '/__pycache__/'], checkTitleTemplate = undefined) {
     return __awaiter(this, void 0, void 0, function* () {
         core.debug(`Parsing file ${file}`);
         const data = fs.readFileSync(file, 'utf8');
         const report = JSON.parse(parser.xml2json(data, { compact: true }));
-        return parseSuite(report, '', suiteRegex, includePassed, checkTitleTemplate);
+        return parseSuite(report, '', suiteRegex, includePassed, excludeSources, checkTitleTemplate);
     });
 }
 exports.parseFile = parseFile;
 function parseSuite(
 /* eslint-disable  @typescript-eslint/no-explicit-any */
-suite, parentName, suiteRegex, includePassed = false, checkTitleTemplate = undefined) {
+suite, parentName, suiteRegex, includePassed = false, excludeSources, checkTitleTemplate = undefined) {
     return __awaiter(this, void 0, void 0, function* () {
         let count = 0;
         let skipped = 0;
@@ -319,7 +323,7 @@ suite, parentName, suiteRegex, includePassed = false, checkTitleTemplate = undef
                     suiteName = testsuite._attributes.name;
                 }
             }
-            const res = yield parseSuite(testsuite, suiteName, suiteRegex, includePassed, checkTitleTemplate);
+            const res = yield parseSuite(testsuite, suiteName, suiteRegex, includePassed, excludeSources, checkTitleTemplate);
             count += res.count;
             skipped += res.skipped;
             annotations.push(...res.annotations);
@@ -356,14 +360,14 @@ suite, parentName, suiteRegex, includePassed = false, checkTitleTemplate = undef
                     const pos = yield resolveFileAndLine(testcase._attributes.file || testsuite._attributes.file, testcase._attributes.line || testsuite._attributes.line, testcase._attributes.classname
                         ? testcase._attributes.classname
                         : testcase._attributes.name, stackTrace);
-                    let resolvedPath = yield resolvePath(pos.fileName);
+                    let resolvedPath = yield resolvePath(pos.fileName, excludeSources);
                     core.debug(`Path prior to stripping: ${resolvedPath}`);
                     const githubWorkspacePath = process.env['GITHUB_WORKSPACE'];
                     if (githubWorkspacePath) {
                         resolvedPath = resolvedPath.replace(`${githubWorkspacePath}/`, ''); // strip workspace prefix, make the path relative
                     }
                     let title = '';
-                    if (checkTitleTemplate !== undefined) {
+                    if (checkTitleTemplate) {
                         // ensure to not duplicate the test_name if file_name is equal
                         const fileName = pos.fileName !== testcase._attributes.name ? pos.fileName : '';
                         title = checkTitleTemplate
@@ -389,9 +393,9 @@ suite, parentName, suiteRegex, includePassed = false, checkTitleTemplate = undef
                         start_column: 0,
                         end_column: 0,
                         annotation_level: success ? 'notice' : 'failure',
-                        title,
-                        message,
-                        raw_details: stackTrace
+                        title: escapeEmoji(title),
+                        message: escapeEmoji(message),
+                        raw_details: escapeEmoji(stackTrace)
                     });
                 }
             }
@@ -406,7 +410,7 @@ suite, parentName, suiteRegex, includePassed = false, checkTitleTemplate = undef
  * Modification Copyright 2021 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
-function parseTestReports(reportPaths, suiteRegex, includePassed = false, checkTitleTemplate = undefined) {
+function parseTestReports(reportPaths, suiteRegex, includePassed = false, excludeSources, checkTitleTemplate = undefined) {
     var e_2, _a;
     return __awaiter(this, void 0, void 0, function* () {
         const globber = yield glob.create(reportPaths, { followSymbolicLinks: false });
@@ -416,7 +420,7 @@ function parseTestReports(reportPaths, suiteRegex, includePassed = false, checkT
         try {
             for (var _b = __asyncValues(globber.globGenerator()), _c; _c = yield _b.next(), !_c.done;) {
                 const file = _c.value;
-                const { count: c, skipped: s, annotations: a } = yield parseFile(file, suiteRegex, includePassed, checkTitleTemplate);
+                const { count: c, skipped: s, annotations: a } = yield parseFile(file, suiteRegex, includePassed, excludeSources, checkTitleTemplate);
                 if (c === 0)
                     continue;
                 count += c;
@@ -435,6 +439,14 @@ function parseTestReports(reportPaths, suiteRegex, includePassed = false, checkT
     });
 }
 exports.parseTestReports = parseTestReports;
+/**
+ * Escape emoji sequences.
+ */
+function escapeEmoji(input) {
+    const regex = /[\u{1f300}-\u{1f5ff}\u{1f900}-\u{1f9ff}\u{1f600}-\u{1f64f}\u{1f680}-\u{1f6ff}\u{2600}-\u{26ff}\u{2700}-\u{27bf}\u{1f1e6}-\u{1f1ff}\u{1f191}-\u{1f251}\u{1f004}\u{1f0cf}\u{1f170}-\u{1f171}\u{1f17e}-\u{1f17f}\u{1f18e}\u{3030}\u{2b50}\u{2b55}\u{2934}-\u{2935}\u{2b05}-\u{2b07}\u{2b1b}-\u{2b1c}\u{3297}\u{3299}\u{303d}\u{00a9}\u{00ae}\u{2122}\u{23f3}\u{24c2}\u{23e9}-\u{23ef}\u{25b6}\u{23f8}-\u{23fa}]/gu;
+    return input.replace(regex, ``); // replace emoji with empty string (\\u${(match.codePointAt(0) || "").toString(16)})
+}
+exports.escapeEmoji = escapeEmoji;
 
 
 /***/ }),

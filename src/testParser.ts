@@ -97,7 +97,10 @@ function safeParseInt(line: string | null): number | null {
  * Modification Copyright 2021 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
-export async function resolvePath(fileName: string): Promise<string> {
+export async function resolvePath(
+  fileName: string,
+  excludeSources: string[]
+): Promise<string> {
   core.debug(`Resolving path for ${fileName}`)
   const normalizedFilename = fileName.replace(/^\.\//, '') // strip relative prefix (./)
   const globber = await glob.create(`**/${normalizedFilename}.*`, {
@@ -106,7 +109,9 @@ export async function resolvePath(fileName: string): Promise<string> {
   const searchPath = globber.getSearchPaths() ? globber.getSearchPaths()[0] : ''
   for await (const result of globber.globGenerator()) {
     core.debug(`Matched file: ${result}`)
-    if (!result.includes('/build/')) {
+
+    const found = excludeSources.find(v => result.includes(v))
+    if (!found) {
       const path = result.slice(searchPath.length + 1)
       core.debug(`Resolved path: ${path}`)
       return path
@@ -126,6 +131,7 @@ export async function parseFile(
   file: string,
   suiteRegex = '',
   includePassed = false,
+  excludeSources: string[] = ['/build/', '/__pycache__/'],
   checkTitleTemplate: string | undefined = undefined
 ): Promise<TestResult> {
   core.debug(`Parsing file ${file}`)
@@ -133,7 +139,14 @@ export async function parseFile(
   const data: string = fs.readFileSync(file, 'utf8')
   const report = JSON.parse(parser.xml2json(data, {compact: true}))
 
-  return parseSuite(report, '', suiteRegex, includePassed, checkTitleTemplate)
+  return parseSuite(
+    report,
+    '',
+    suiteRegex,
+    includePassed,
+    excludeSources,
+    checkTitleTemplate
+  )
 }
 
 async function parseSuite(
@@ -142,6 +155,7 @@ async function parseSuite(
   parentName: string,
   suiteRegex: string,
   includePassed = false,
+  excludeSources: string[],
   checkTitleTemplate: string | undefined = undefined
 ): Promise<TestResult> {
   let count = 0
@@ -182,6 +196,7 @@ async function parseSuite(
       suiteName,
       suiteRegex,
       includePassed,
+      excludeSources,
       checkTitleTemplate
     )
     count += res.count
@@ -206,7 +221,7 @@ async function parseSuite(
       if (testcase.skipped || testcase._attributes.status === 'disabled')
         skipped++
       if (failed || (includePassed && success)) {
-        const stackTrace = (
+        const stackTrace: string = (
           (testcase.failure && testcase.failure._cdata) ||
           (testcase.failure && testcase.failure._text) ||
           (testcase.error && testcase.error._cdata) ||
@@ -216,7 +231,7 @@ async function parseSuite(
           .toString()
           .trim()
 
-        const message = (
+        const message: string = (
           (testcase.failure &&
             testcase.failure._attributes &&
             testcase.failure._attributes.message) ||
@@ -236,7 +251,7 @@ async function parseSuite(
           stackTrace
         )
 
-        let resolvedPath = await resolvePath(pos.fileName)
+        let resolvedPath = await resolvePath(pos.fileName, excludeSources)
 
         core.debug(`Path prior to stripping: ${resolvedPath}`)
 
@@ -246,7 +261,7 @@ async function parseSuite(
         }
 
         let title = ''
-        if (checkTitleTemplate !== undefined) {
+        if (checkTitleTemplate) {
           // ensure to not duplicate the test_name if file_name is equal
           const fileName =
             pos.fileName !== testcase._attributes.name ? pos.fileName : ''
@@ -275,9 +290,9 @@ async function parseSuite(
           start_column: 0,
           end_column: 0,
           annotation_level: success ? 'notice' : 'failure',
-          title,
-          message,
-          raw_details: stackTrace
+          title: escapeEmoji(title),
+          message: escapeEmoji(message),
+          raw_details: escapeEmoji(stackTrace)
         })
       }
     }
@@ -296,6 +311,7 @@ export async function parseTestReports(
   reportPaths: string,
   suiteRegex: string,
   includePassed = false,
+  excludeSources: string[],
   checkTitleTemplate: string | undefined = undefined
 ): Promise<TestResult> {
   const globber = await glob.create(reportPaths, {followSymbolicLinks: false})
@@ -307,11 +323,26 @@ export async function parseTestReports(
       count: c,
       skipped: s,
       annotations: a
-    } = await parseFile(file, suiteRegex, includePassed, checkTitleTemplate)
+    } = await parseFile(
+      file,
+      suiteRegex,
+      includePassed,
+      excludeSources,
+      checkTitleTemplate
+    )
     if (c === 0) continue
     count += c
     skipped += s
     annotations = annotations.concat(a)
   }
   return {count, skipped, annotations}
+}
+
+/**
+ * Escape emoji sequences.
+ */
+export function escapeEmoji(input: string): string {
+  const regex =
+    /[\u{1f300}-\u{1f5ff}\u{1f900}-\u{1f9ff}\u{1f600}-\u{1f64f}\u{1f680}-\u{1f6ff}\u{2600}-\u{26ff}\u{2700}-\u{27bf}\u{1f1e6}-\u{1f1ff}\u{1f191}-\u{1f251}\u{1f004}\u{1f0cf}\u{1f170}-\u{1f171}\u{1f17e}-\u{1f17f}\u{1f18e}\u{3030}\u{2b50}\u{2b55}\u{2934}-\u{2935}\u{2b05}-\u{2b07}\u{2b1b}-\u{2b1c}\u{3297}\u{3299}\u{303d}\u{00a9}\u{00ae}\u{2122}\u{23f3}\u{24c2}\u{23e9}-\u{23ef}\u{25b6}\u{23f8}-\u{23fa}]/gu
+  return input.replace(regex, ``) // replace emoji with empty string (\\u${(match.codePointAt(0) || "").toString(16)})
 }
