@@ -29,6 +29,7 @@ export async function run(): Promise<void> {
     const excludeSources = core.getInput('exclude_sources')
       ? core.getInput('exclude_sources').split(',')
       : []
+    const checkRetries = core.getInput('check_retries') === 'true'
 
     core.endGroup()
     core.startGroup(`📦 Process test results`)
@@ -37,13 +38,25 @@ export async function run(): Promise<void> {
       reportPaths,
       suiteRegex,
       includePassed,
+      checkRetries,
       excludeSources,
       checkTitleTemplate
     )
     const foundResults = testResult.count > 0 || testResult.skipped > 0
-    const title = foundResults
-      ? `${testResult.count} tests run, ${testResult.skipped} skipped, ${testResult.annotations.length} failed.`
-      : 'No test results found!'
+
+    let title = 'No test results found!'
+    if (foundResults) {
+      const passed = testResult.annotations.filter(
+        a => a.annotation_level === 'notice'
+      ).length
+      const failed = testResult.annotations.length - passed
+      if (includePassed) {
+        title = `${testResult.count} tests run, ${passed} passed, ${testResult.skipped} skipped, ${failed} failed.`
+      } else {
+        title = `${testResult.count} tests run, ${testResult.skipped} skipped, ${failed} failed.`
+      }
+    }
+
     core.info(`ℹ️ ${title}`)
 
     if (!foundResults) {

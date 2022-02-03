@@ -63,13 +63,22 @@ function run() {
             const excludeSources = core.getInput('exclude_sources')
                 ? core.getInput('exclude_sources').split(',')
                 : [];
+            const checkRetries = core.getInput('check_retries') === 'true';
             core.endGroup();
             core.startGroup(`📦 Process test results`);
-            const testResult = yield (0, testParser_1.parseTestReports)(reportPaths, suiteRegex, includePassed, excludeSources, checkTitleTemplate);
+            const testResult = yield (0, testParser_1.parseTestReports)(reportPaths, suiteRegex, includePassed, checkRetries, excludeSources, checkTitleTemplate);
             const foundResults = testResult.count > 0 || testResult.skipped > 0;
-            const title = foundResults
-                ? `${testResult.count} tests run, ${testResult.skipped} skipped, ${testResult.annotations.length} failed.`
-                : 'No test results found!';
+            let title = 'No test results found!';
+            if (foundResults) {
+                const passed = testResult.annotations.filter(a => a.annotation_level === 'notice').length;
+                const failed = testResult.annotations.length - passed;
+                if (includePassed) {
+                    title = `${testResult.count} tests run, ${passed} passed, ${testResult.skipped} skipped, ${failed} failed.`;
+                }
+                else {
+                    title = `${testResult.count} tests run, ${testResult.skipped} skipped, ${failed} failed.`;
+                }
+            }
             core.info(`ℹ️ ${title}`);
             if (!foundResults) {
                 if (requireTests) {
@@ -281,18 +290,18 @@ exports.resolvePath = resolvePath;
  * Modification Copyright 2021 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
-function parseFile(file, suiteRegex = '', includePassed = false, excludeSources = ['/build/', '/__pycache__/'], checkTitleTemplate = undefined) {
+function parseFile(file, suiteRegex = '', includePassed = false, checkRetries = false, excludeSources = ['/build/', '/__pycache__/'], checkTitleTemplate = undefined) {
     return __awaiter(this, void 0, void 0, function* () {
         core.debug(`Parsing file ${file}`);
         const data = fs.readFileSync(file, 'utf8');
         const report = JSON.parse(parser.xml2json(data, { compact: true }));
-        return parseSuite(report, '', suiteRegex, includePassed, excludeSources, checkTitleTemplate);
+        return parseSuite(report, '', suiteRegex, includePassed, checkRetries, excludeSources, checkTitleTemplate);
     });
 }
 exports.parseFile = parseFile;
 function parseSuite(
 /* eslint-disable  @typescript-eslint/no-explicit-any */
-suite, parentName, suiteRegex, includePassed = false, excludeSources, checkTitleTemplate = undefined) {
+suite, parentName, suiteRegex, includePassed = false, checkRetries = false, excludeSources, checkTitleTemplate = undefined) {
     return __awaiter(this, void 0, void 0, function* () {
         let count = 0;
         let skipped = 0;
@@ -323,18 +332,43 @@ suite, parentName, suiteRegex, includePassed = false, excludeSources, checkTitle
                     suiteName = testsuite._attributes.name;
                 }
             }
-            const res = yield parseSuite(testsuite, suiteName, suiteRegex, includePassed, excludeSources, checkTitleTemplate);
+            const res = yield parseSuite(testsuite, suiteName, suiteRegex, includePassed, checkRetries, excludeSources, checkTitleTemplate);
             count += res.count;
             skipped += res.skipped;
             annotations.push(...res.annotations);
             if (!testsuite.testcase) {
                 continue;
             }
-            const testcases = Array.isArray(testsuite.testcase)
+            let testcases = Array.isArray(testsuite.testcase)
                 ? testsuite.testcase
                 : testsuite.testcase
                     ? [testsuite.testcase]
                     : [];
+            if (checkRetries) {
+                // identify duplicates, in case of flaky tests, and remove them
+                const testcaseMap = new Map();
+                for (const testcase of testcases) {
+                    const key = testcase._attributes.name;
+                    if (testcaseMap.get(key) !== undefined) {
+                        // testcase with matching name exists
+                        const failed = testcase.failure || testcase.error;
+                        const previousFailed = testcaseMap.get(key).failure || testcaseMap.get(key).error;
+                        if (failed && !previousFailed) {
+                            // previous is a success, drop failure
+                            core.debug(`Drop flaky test failure for (1): ${key}`);
+                        }
+                        else if (!failed && previousFailed) {
+                            // previous failed, new one not, replace
+                            testcaseMap.set(key, testcase);
+                            core.debug(`Drop flaky test failure for (2): ${key}`);
+                        }
+                    }
+                    else {
+                        testcaseMap.set(key, testcase);
+                    }
+                }
+                testcases = Array.from(testcaseMap.values());
+            }
             for (const testcase of testcases) {
                 count++;
                 const failed = testcase.failure || testcase.error;
@@ -410,7 +444,7 @@ suite, parentName, suiteRegex, includePassed = false, excludeSources, checkTitle
  * Modification Copyright 2021 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
-function parseTestReports(reportPaths, suiteRegex, includePassed = false, excludeSources, checkTitleTemplate = undefined) {
+function parseTestReports(reportPaths, suiteRegex, includePassed = false, checkRetries = false, excludeSources, checkTitleTemplate = undefined) {
     var e_2, _a;
     return __awaiter(this, void 0, void 0, function* () {
         const globber = yield glob.create(reportPaths, { followSymbolicLinks: false });
@@ -420,7 +454,7 @@ function parseTestReports(reportPaths, suiteRegex, includePassed = false, exclud
         try {
             for (var _b = __asyncValues(globber.globGenerator()), _c; _c = yield _b.next(), !_c.done;) {
                 const file = _c.value;
-                const { count: c, skipped: s, annotations: a } = yield parseFile(file, suiteRegex, includePassed, excludeSources, checkTitleTemplate);
+                const { count: c, skipped: s, annotations: a } = yield parseFile(file, suiteRegex, includePassed, checkRetries, excludeSources, checkTitleTemplate);
                 if (c === 0)
                     continue;
                 count += c;
@@ -8050,7 +8084,7 @@ Object.defineProperty(Response.prototype, Symbol.toStringTag, {
 });
 
 const INTERNALS$2 = Symbol('Request internals');
-const URL = whatwgUrl.URL;
+const URL = Url.URL || whatwgUrl.URL;
 
 // fix an issue where "format", "parse" aren't a named export for node <10
 const parse_url = Url.parse;
@@ -8313,9 +8347,17 @@ AbortError.prototype = Object.create(Error.prototype);
 AbortError.prototype.constructor = AbortError;
 AbortError.prototype.name = 'AbortError';
 
+const URL$1 = Url.URL || whatwgUrl.URL;
+
 // fix an issue where "PassThrough", "resolve" aren't a named export for node <10
 const PassThrough$1 = Stream.PassThrough;
-const resolve_url = Url.resolve;
+
+const isDomainOrSubdomain = function isDomainOrSubdomain(destination, original) {
+	const orig = new URL$1(original).hostname;
+	const dest = new URL$1(destination).hostname;
+
+	return orig === dest || orig[orig.length - dest.length - 1] === '.' && orig.endsWith(dest);
+};
 
 /**
  * Fetch function
@@ -8403,7 +8445,19 @@ function fetch(url, opts) {
 				const location = headers.get('Location');
 
 				// HTTP fetch step 5.3
-				const locationURL = location === null ? null : resolve_url(request.url, location);
+				let locationURL = null;
+				try {
+					locationURL = location === null ? null : new URL$1(location, request.url).toString();
+				} catch (err) {
+					// error here can only be invalid URL in Location: header
+					// do not throw when options.redirect == manual
+					// let the user extract the errorneous redirect URL
+					if (request.redirect !== 'manual') {
+						reject(new FetchError(`uri requested responds with an invalid redirect URL: ${location}`, 'invalid-redirect'));
+						finalize();
+						return;
+					}
+				}
 
 				// HTTP fetch step 5.5
 				switch (request.redirect) {
@@ -8450,6 +8504,12 @@ function fetch(url, opts) {
 							timeout: request.timeout,
 							size: request.size
 						};
+
+						if (!isDomainOrSubdomain(request.url, locationURL)) {
+							for (const name of ['authorization', 'www-authenticate', 'cookie', 'cookie2']) {
+								requestOpts.headers.delete(name);
+							}
+						}
 
 						// HTTP-redirect fetch step 9
 						if (res.statusCode !== 303 && request.body && getTotalBytes(request) === null) {
