@@ -68,10 +68,13 @@ function run() {
             core.startGroup(`📦 Process test results`);
             const testResult = yield (0, testParser_1.parseTestReports)(reportPaths, suiteRegex, includePassed, checkRetries, excludeSources, checkTitleTemplate);
             const foundResults = testResult.count > 0 || testResult.skipped > 0;
+            // get the count of passed and failed tests.
+            const passed = testResult.annotations.filter(a => a.annotation_level === 'notice').length;
+            const failed = testResult.annotations.length - passed;
+            core.setOutput('passed', passed);
+            core.setOutput('failed', failed);
             let title = 'No test results found!';
             if (foundResults) {
-                const passed = testResult.annotations.filter(a => a.annotation_level === 'notice').length;
-                const failed = testResult.annotations.length - passed;
                 if (includePassed) {
                     title = `${testResult.count} tests run, ${passed} passed, ${testResult.skipped} skipped, ${failed} failed.`;
                 }
@@ -88,9 +91,7 @@ function run() {
             }
             const pullRequest = github.context.payload.pull_request;
             const link = (pullRequest && pullRequest.html_url) || github.context.ref;
-            const conclusion = foundResults && testResult.annotations.length === 0
-                ? 'success'
-                : 'failure';
+            const conclusion = foundResults && failed <= 0 ? 'success' : 'failure';
             const head_sha = commit || (pullRequest && pullRequest.head.sha) || github.context.sha;
             core.info(`ℹ️ Posting with conclusion '${conclusion}' to ${link} (sha: ${head_sha})`);
             core.endGroup();
@@ -124,7 +125,7 @@ function run() {
                     yield octokit.rest.checks.create(createCheckRequest);
                 }
                 if (failOnFailure && conclusion === 'failure') {
-                    core.setFailed(`❌ Tests reported ${testResult.annotations.length} failures`);
+                    core.setFailed(`❌ Tests reported ${failed} failures`);
                 }
             }
             catch (error) {
@@ -194,7 +195,7 @@ const parser = __importStar(__nccwpck_require__(8821));
  * Copyright 2020 ScaCap
  * https://github.com/ScaCap/action-surefire-report/blob/master/utils.js#L6
  *
- * Modification Copyright 2021 Mike Penz
+ * Modification Copyright 2022 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
 function resolveFileAndLine(file, line, className, output) {
@@ -248,7 +249,7 @@ function safeParseInt(line) {
  * Copyright 2020 ScaCap
  * https://github.com/ScaCap/action-surefire-report/blob/master/utils.js#L18
  *
- * Modification Copyright 2021 Mike Penz
+ * Modification Copyright 2022 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
 function resolvePath(fileName, excludeSources) {
@@ -287,7 +288,7 @@ exports.resolvePath = resolvePath;
  * Copyright 2020 ScaCap
  * https://github.com/ScaCap/action-surefire-report/blob/master/utils.js#L43
  *
- * Modification Copyright 2021 Mike Penz
+ * Modification Copyright 2022 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
 function parseFile(file, suiteRegex = '', includePassed = false, checkRetries = false, excludeSources = ['/build/', '/__pycache__/'], checkTitleTemplate = undefined) {
@@ -441,7 +442,7 @@ suite, parentName, suiteRegex, includePassed = false, checkRetries = false, excl
  * Copyright 2020 ScaCap
  * https://github.com/ScaCap/action-surefire-report/blob/master/utils.js#L113
  *
- * Modification Copyright 2021 Mike Penz
+ * Modification Copyright 2022 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
 function parseTestReports(reportPaths, suiteRegex, includePassed = false, checkRetries = false, excludeSources, checkTitleTemplate = undefined) {
