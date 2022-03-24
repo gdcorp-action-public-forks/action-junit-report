@@ -63,7 +63,7 @@ jobs:
       - name: Build and Run Tests
         run: # execute your tests generating test results
       - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v2
+        uses: mikepenz/action-junit-report@v3
         if: always() # always run even if the previous step fails
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
@@ -84,6 +84,8 @@ jobs:
 | `check_retries`         | Optional. If a testcase is retried, ignore the original failure.                                                                                             |
 | `check_title_template`  | Optional. Template to configure the title format. Placeholders: ${{FILE_NAME}}, ${{SUITE_NAME}}, ${{TEST_NAME}}.                                             |
 | `summary`         | Optional. Additional text to summary output                                                                                                                        |
+| `update_check`    | Optional. Uses an alternative API to update checks, use for cases with more than 50 annotations.                                                                   |
+| `annotate_only`   | Optional. Will only annotate the results on the files, won't create a check run.                                                                                   |
 
 ## Sample 🖥️
 

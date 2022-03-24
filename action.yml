@@ -23,6 +23,10 @@ inputs:
     description: 'Regular expression for the named test suites'
     required: false
     default: ''
+  annotate_only:
+    description: 'Enable to only annotate the results on the files, will not create a check run.'
+    required: false
+    default: 'false'
   update_check:
     description: 'Defines if the active check should be updated instead'
     required: false
@@ -50,6 +54,10 @@ inputs:
     description: 'Additional text to summary output'
     required: false
     default: ''
+  check_retries:
+    description: 'If a testcase is retried, ignore the original failure.'
+    required: false
+    default: 'false'
 runs:
-  using: 'node12'
+  using: 'node16'
   main: 'dist/index.js'
