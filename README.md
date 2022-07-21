@@ -75,7 +75,8 @@ jobs:
 |----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `report_paths`    | **Required**. [Glob](https://github.com/actions/toolkit/tree/master/packages/glob) expression to junit report paths. The default is `**/junit-reports/TEST-*.xml`. |
 | `token`           | Optional. GitHub token for creating a check run. Set to `${{ github.token }}` by default.                                                                          |
-| `exclude_sources` | Optional. Provide `,` seperated array of folders to ignore for source lookup. Defaults to: `/build/,/__pycache__/`                                                  |
+| `test_files_prefix` | Optional. Prepends the provided prefix to test file paths within the report when annotating on GitHub.                                                           |
+| `exclude_sources` | Optional. Provide `,` seperated array of folders to ignore for source lookup. Defaults to: `/build/,/__pycache__/`                                                 |
 | `check_name`      | Optional. Check name to use when creating a check run. The default is `JUnit Test Report`.                                                                         |
 | `suite_regex`     | Optional. Regular expression for the named test suites. E.g. `Test*`                                                                                               |
 | `commit`          | Optional. The commit SHA to update the status. This is useful when you run it with `workflow_run`.                                                                 |
@@ -86,6 +87,23 @@ jobs:
 | `summary`         | Optional. Additional text to summary output                                                                                                                        |
 | `update_check`    | Optional. Uses an alternative API to update checks, use for cases with more than 50 annotations.                                                                   |
 | `annotate_only`   | Optional. Will only annotate the results on the files, won't create a check run.                                                                                   |
+
+### Action outputs
+
+After action execution it will return the test counts as output.
+
+```yml
+# ${{steps.{CHANGELOG_STEP_ID}.outputs.total}}
+```
+
+A full set list of possible output values for this action.
+
+| **Output**            | **Description**                                                                        |
+|-----------------------|----------------------------------------------------------------------------------------|
+| `outputs.total`       | The total number of test cases covered by this test-step.                              |
+| `outputs.passed`      | The number of passed test cases.                                                       |
+| `outputs.skipped`     | The number of skipped test cases.                                                      |
+| `outputs.failed`      | Then umber of failed test cases.                                                       |
 
 ## Sample 🖥️
 

@@ -10,6 +10,7 @@ export async function run(): Promise<void> {
     const summary = core.getInput('summary')
     const checkTitleTemplate = core.getInput('check_title_template')
     const reportPaths = core.getInput('report_paths')
+    const testFilesPrefix = core.getInput('test_files_prefix')
     const suiteRegex = core.getInput('suite_regex')
     const token =
       core.getInput('token') ||
@@ -42,26 +43,25 @@ export async function run(): Promise<void> {
       includePassed,
       checkRetries,
       excludeSources,
-      checkTitleTemplate
+      checkTitleTemplate,
+      testFilesPrefix
     )
     const foundResults = testResult.count > 0 || testResult.skipped > 0
 
     // get the count of passed and failed tests.
-    const passed = testResult.annotations.filter(
-      a => a.annotation_level === 'notice'
+    const failed = testResult.annotations.filter(
+      a => a.annotation_level === 'failure'
     ).length
-    const failed = testResult.annotations.length - passed
+    const passed = testResult.count - failed - testResult.skipped
 
+    core.setOutput('total', testResult.count)
     core.setOutput('passed', passed)
+    core.setOutput('skipped', testResult.skipped)
     core.setOutput('failed', failed)
 
     let title = 'No test results found!'
     if (foundResults) {
-      if (includePassed) {
-        title = `${testResult.count} tests run, ${passed} passed, ${testResult.skipped} skipped, ${failed} failed.`
-      } else {
-        title = `${testResult.count} tests run, ${testResult.skipped} skipped, ${failed} failed.`
-      }
+      title = `${testResult.count} tests run, ${passed} passed, ${testResult.skipped} skipped, ${failed} failed.`
     }
 
     core.info(`ℹ️ ${title}`)
@@ -162,18 +162,18 @@ export async function run(): Promise<void> {
 
       const table: SummaryTableRow[] = [
         [
-          {data: '', header: true},
-          {data: 'Result', header: true}
+          {data: 'Tests', header: true},
+          {data: 'Passed ✅', header: true},
+          {data: 'Skipped ↪️', header: true},
+          {data: 'Failed ❌', header: true}
         ],
-        ['Tests', `${testResult.count} run`]
+        [
+          `${testResult.count} run`,
+          `${passed} passed`,
+          `${testResult.skipped} skipped`,
+          `${failed} failed`
+        ]
       ]
-      if (includePassed) {
-        table.push(['Passed ✅', `${passed} passed`])
-      }
-      table.push(
-        ['Skipped ↪️', `${testResult.skipped} skipped`],
-        ['Failed ❌', `${failed} failed`]
-      )
 
       await core.summary.addHeading(checkName).addTable(table).write()
 
