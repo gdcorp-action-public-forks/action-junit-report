@@ -21,6 +21,9 @@ export async function run(): Promise<void> {
     const requireTests = core.getInput('require_tests') === 'true'
     const includePassed = core.getInput('include_passed') === 'true'
     const checkRetries = core.getInput('check_retries') === 'true'
+    const annotateNotice = core.getInput('annotate_notice') === 'true'
+    const jobSummary = core.getInput('job_summary') === 'true'
+    const detailedSummary = core.getInput('detailed_summary') === 'true'
 
     const reportPaths = core.getMultilineInput('report_paths')
     const summary = core.getMultilineInput('summary')
@@ -96,7 +99,7 @@ export async function run(): Promise<void> {
 
     try {
       for (const testResult of testResults) {
-        annotateTestResult(testResult, token, headSha, annotateOnly, updateCheck)
+        await annotateTestResult(testResult, token, headSha, annotateOnly, updateCheck, annotateNotice)
       }
     } catch (error) {
       core.error(`❌ Failed to create checks using the provided token. (${error})`)
@@ -105,10 +108,17 @@ export async function run(): Promise<void> {
       )
     }
 
-    try {
-      attachSummary(testResults)
-    } catch (error) {
-      core.error(`❌ Failed to set the summary using the provided token. (${error})`)
+    const supportsJobSummary = process.env['GITHUB_STEP_SUMMARY']
+    if (jobSummary && supportsJobSummary) {
+      try {
+        await attachSummary(testResults, detailedSummary)
+      } catch (error) {
+        core.error(`❌ Failed to set the summary using the provided token. (${error})`)
+      }
+    } else if (jobSummary && !supportsJobSummary) {
+      core.warning(`⚠️ Your environment seems to not support job summaries.`)
+    } else {
+      core.info('⏩ Skipped creation of job summary')
     }
 
     if (failOnFailure && conclusion === 'failure') {
