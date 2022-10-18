@@ -92,6 +92,7 @@ jobs:
 | `job_summary`     | Optional. Enables the publishing of the job summary for the results. Defaults to `true`. May be required to disable [Enterprise Server](https://github.com/mikepenz/action-junit-report/issues/637)                           |
 | `detailed_summary`    | Optional. Include table with all test results in the summary. Defaults to `false`.                            |
 | `annotate_notice`    | Optional. Annotate passed test results along with warning/failed ones. Defaults to `false`. (Changed in v3.5.0)                           |
+| `follow_symlink`    | Optional. Enables to follow symlinks when searching test files via the globber. Defaults to `false`.                           |
 
 ### Action outputs
 
@@ -108,16 +109,16 @@ A full set list of possible output values for this action.
 | `outputs.total`       | The total number of test cases covered by this test-step.                              |
 | `outputs.passed`      | The number of passed test cases.                                                       |
 | `outputs.skipped`     | The number of skipped test cases.                                                      |
-| `outputs.failed`      | Then umber of failed test cases.                                                       |
+| `outputs.failed`      | The number of failed test cases.                                                       |
 
 ### PR run permissions
 
-For [security reasons], the github token used for `pull_request` workflows is [maxed at read-only].
+For [security reasons], the github token used for `pull_request` workflows is [marked as read-only].
 If you want to post checks to a PR from an external repository, you will need to use a separate workflow
 which has a read/write token, or use a PAT with elevated permissions. 
 
 [security reasons]: https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
-[maxed at read-only]: https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token
+[marked as read-only]: https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token
 
 <details><summary><b>Example</b></summary>
 <p>
