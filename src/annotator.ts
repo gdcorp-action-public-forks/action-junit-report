@@ -25,6 +25,10 @@ export async function annotateTestResult(
 
   const conclusion: 'success' | 'failure' = foundResults && testResult.failed <= 0 ? 'success' : 'failure'
 
+  for (const annotation of annotations) {
+    core.info(`   🧪 - ${annotation.path} | ${annotation.message.split('\n', 1)[0]}`)
+  }
+
   const octokit = github.getOctokit(token)
   if (annotateOnly) {
     for (const annotation of annotations) {
@@ -136,9 +140,11 @@ export async function attachSummary(
       )
 
       if (annotations.length === 0) {
-        core.warning(
-          `⚠️ No annotations found for ${testResult.checkName}. If you want to include passed results in this table please configure 'include_passed' as 'true'`
-        )
+        if (!includePassed) {
+          core.info(
+            `⚠️ No annotations found for ${testResult.checkName}. If you want to include passed results in this table please configure 'include_passed' as 'true'`
+          )
+        }
         detailsTable.push([`-`, `No test annotations available`, `-`])
       } else {
         for (const annotation of annotations) {
