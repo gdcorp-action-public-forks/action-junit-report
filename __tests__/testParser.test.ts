@@ -8,7 +8,7 @@ import { resolveFileAndLine, resolvePath, parseFile, Transformer } from '../src/
  * New test cases:
  *   Copyright Mike Penz
  */
-jest.setTimeout(10000)
+jest.setTimeout(30000)
 
 describe('resolveFileAndLine', () => {
     it('should default to 1 if no line found', async () => {
@@ -177,6 +177,33 @@ describe('parseFile', () => {
             }
         ]);
     });
+
+    it('should skip after reaching annotations_limit', async () => {
+        const annotationsLimit = 1
+        const { totalCount, skipped, annotations } = await parseFile(
+            'test_results/tests/utils/target/surefire-reports/TEST-action.surefire.report.calc.CalcUtilsTest.xml', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, annotationsLimit
+        );
+
+        expect(totalCount).toBe(1);
+        expect(skipped).toBe(0);
+        expect(annotations).toStrictEqual([
+            {
+                path: 'test_results/tests/utils/src/test/java/action/surefire/report/calc/CalcUtilsTest.kt',
+                start_line: 27,
+                end_line: 27,
+                start_column: 0,
+                end_column: 0,
+                annotation_level: 'failure',
+                title: 'CalcUtilsTest.test error handling',
+                message:
+                    'unexpected exception type thrown; expected:<java.lang.IllegalStateException> but was:<java.lang.IllegalArgumentException>',
+                raw_details:
+                    'java.lang.AssertionError: unexpected exception type thrown; expected:<java.lang.IllegalStateException> but was:<java.lang.IllegalArgumentException>\n\tat action.surefire.report.calc.CalcUtilsTest.test error handling(CalcUtilsTest.kt:27)\nCaused by: java.lang.IllegalArgumentException: Amount must have max 2 non-zero decimal places\n\tat action.surefire.report.calc.CalcUtilsTest.scale(CalcUtilsTest.kt:31)\n\tat action.surefire.report.calc.CalcUtilsTest.access$scale(CalcUtilsTest.kt:9)\n\tat action.surefire.report.calc.CalcUtilsTest.test error handling(CalcUtilsTest.kt:27)'
+            }
+        ]);
+    });
+
+
     it('should parse pytest results', async () => {
         const { totalCount, skipped, annotations } = await parseFile('test_results/python/report.xml');
         const filtered = annotations.filter(annotation =>  annotation.annotation_level !== 'notice')
@@ -521,6 +548,27 @@ action.surefire.report.email.InvalidEmailAddressException: Invalid email address
         ]);
     });
 
+    it('should parse xunit results with file and line on failure', async () => {
+        const { totalCount, skipped, annotations } = await parseFile('test_results/xunit/report_fl_on_f.xml');
+        const filtered = annotations.filter(annotation =>  annotation.annotation_level !== 'notice')
+
+        expect(totalCount).toBe(4);
+        expect(skipped).toBe(0);
+        expect(filtered).toStrictEqual([
+            {
+                path: "main.c",
+                start_line: 38,
+                end_line: 38,
+                start_column: 0,
+                end_column: 0,
+                annotation_level: "failure",
+                title: "main.c.test_my_sum_fail",
+                message: "Expected 2 Was 0",
+                raw_details: "",
+              }
+        ]);
+    });
+
     it('should parse junit web test results', async () => {
         const { totalCount, skipped, annotations } = await parseFile('test_results/junit-web-test/expected.xml');
         const filtered = annotations.filter(annotation =>  annotation.annotation_level !== 'notice')
@@ -666,6 +714,27 @@ action.surefire.report.email.InvalidEmailAddressException: Invalid email address
                 message: "Metadata Test",
                 raw_details: "",
             },
+        ]);
+    });
+
+    it('should parse catch2 results with file and line on failure', async () => {
+        const { totalCount, skipped, annotations } = await parseFile('test_results/catch2/report.xml');
+        const filtered = annotations.filter(annotation =>  annotation.annotation_level !== 'notice')
+
+        expect(totalCount).toBe(1);
+        expect(skipped).toBe(0);
+        expect(filtered).toStrictEqual([
+            {
+                path: "test/unit/detail/utility/is_constant_evaluated.cpp",
+                start_line: 19,
+                end_line: 19,
+                start_column: 0,
+                end_column: 0,
+                annotation_level: "failure",
+                title: "test/unit/detail/utility/is_constant_evaluated.cpp.is constant evaluated",
+                message: "REQUIRE(v == 1) expands to 0 == 10",
+                raw_details: "FAILED:\n  REQUIRE( v == 1 )\nwith expansion:\n  0 == 1\n0\nat /__w/futures/futures/test/unit/detail/utility/is_constant_evaluated.cpp:19",
+              }
         ]);
     });
 });
