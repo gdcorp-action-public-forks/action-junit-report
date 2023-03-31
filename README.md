@@ -64,7 +64,7 @@ jobs:
         run: # execute your tests generating test results
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v3
-        if: always() # always run even if the previous step fails
+        if: success() || failure() # always run even if the previous step fails
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
 ```
@@ -115,7 +115,14 @@ A full set list of possible output values for this action.
 
 ### PR run permissions
 
-For [security reasons], the github token used for `pull_request` workflows is [marked as read-only].
+The action requires `write` permission on the checks. If the GA token is `read-only` (this is a repository configuration) please enable `write` permission via:
+
+```yml
+permissions:
+  checks: write
+```
+
+Additionally for [security reasons], the github token used for `pull_request` workflows is [marked as read-only].
 If you want to post checks to a PR from an external repository, you will need to use a separate workflow
 which has a read/write token, or use a PAT with elevated permissions. 
 

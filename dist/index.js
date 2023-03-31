@@ -51,7 +51,7 @@ function annotateTestResult(testResult, token, headSha, annotateOnly, updateChec
             title = `${testResult.totalCount} tests run, ${testResult.passed} passed, ${testResult.skipped} skipped, ${testResult.failed} failed.`;
         }
         core.info(`ℹ️ - ${testResult.checkName} - ${title}`);
-        const conclusion = foundResults && testResult.failed <= 0 ? 'success' : 'failure';
+        const conclusion = testResult.failed <= 0 ? 'success' : 'failure';
         for (const annotation of annotations) {
             core.info(`   🧪 - ${annotation.path} | ${annotation.message.split('\n', 1)[0]}`);
         }
@@ -233,11 +233,14 @@ function run() {
             const checkName = core.getMultilineInput('check_name');
             const testFilesPrefix = core.getMultilineInput('test_files_prefix');
             const suiteRegex = core.getMultilineInput('suite_regex');
-            const excludeSources = core.getMultilineInput('exclude_sources') ? core.getMultilineInput('exclude_sources') : [];
+            let excludeSources = core.getMultilineInput('exclude_sources') ? core.getMultilineInput('exclude_sources') : [];
             const checkTitleTemplate = core.getMultilineInput('check_title_template');
             const transformers = (0, utils_1.readTransformers)(core.getInput('transformers', { trimWhitespace: true }));
             const followSymlink = core.getBooleanInput('follow_symlink');
             const annotationsLimit = Number(core.getInput('annotations_limit') || -1);
+            if (excludeSources.length === 0) {
+                excludeSources = ['/build/', '/__pycache__/'];
+            }
             core.endGroup();
             core.startGroup(`📦 Process test results`);
             const reportsCount = reportPaths.length;
@@ -258,22 +261,20 @@ function run() {
                 mergedResult.skipped += testResult.skipped;
                 mergedResult.failed += testResult.failed;
                 mergedResult.passed += testResult.passed;
-                const foundResults = testResult.totalCount > 0 || testResult.skipped > 0;
-                if (!foundResults) {
-                    if (requireTests) {
-                        core.setFailed(`❌ No test results found for ${checkName}`);
-                    }
-                    return;
-                }
                 testResults.push(testResult);
             }
             core.setOutput('total', mergedResult.totalCount);
             core.setOutput('passed', mergedResult.passed);
             core.setOutput('skipped', mergedResult.skipped);
             core.setOutput('failed', mergedResult.failed);
+            const foundResults = mergedResult.totalCount > 0 || mergedResult.skipped > 0;
+            if (!foundResults && requireTests) {
+                core.setFailed(`❌ No test results found for ${checkName}`);
+                return; // end if we failed due to no tests, but configured to require tests
+            }
             const pullRequest = github.context.payload.pull_request;
             const link = (pullRequest && pullRequest.html_url) || github.context.ref;
-            const conclusion = mergedResult.totalCount > 0 && mergedResult.failed <= 0 ? 'success' : 'failure';
+            const conclusion = mergedResult.failed <= 0 ? 'success' : 'failure';
             const headSha = commit || (pullRequest && pullRequest.head.sha) || github.context.sha;
             core.info(`ℹ️ Posting with conclusion '${conclusion}' to ${link} (sha: ${headSha})`);
             core.endGroup();
@@ -2057,16 +2058,18 @@ exports.create = create;
  * Computes the sha256 hash of a glob
  *
  * @param patterns  Patterns separated by newlines
+ * @param currentWorkspace  Workspace used when matching files
  * @param options   Glob options
+ * @param verbose   Enables verbose logging
  */
-function hashFiles(patterns, options, verbose = false) {
+function hashFiles(patterns, currentWorkspace = '', options, verbose = false) {
     return __awaiter(this, void 0, void 0, function* () {
         let followSymbolicLinks = true;
         if (options && typeof options.followSymbolicLinks === 'boolean') {
             followSymbolicLinks = options.followSymbolicLinks;
         }
         const globber = yield create(patterns, { followSymbolicLinks });
-        return internal_hash_files_1.hashFiles(globber, verbose);
+        return internal_hash_files_1.hashFiles(globber, currentWorkspace, verbose);
     });
 }
 exports.hashFiles = hashFiles;
@@ -2426,13 +2429,15 @@ const fs = __importStar(__nccwpck_require__(7147));
 const stream = __importStar(__nccwpck_require__(2781));
 const util = __importStar(__nccwpck_require__(3837));
 const path = __importStar(__nccwpck_require__(1017));
-function hashFiles(globber, verbose = false) {
+function hashFiles(globber, currentWorkspace, verbose = false) {
     var e_1, _a;
     var _b;
     return __awaiter(this, void 0, void 0, function* () {
         const writeDelegate = verbose ? core.info : core.debug;
         let hasMatch = false;
-        const githubWorkspace = (_b = process.env['GITHUB_WORKSPACE']) !== null && _b !== void 0 ? _b : process.cwd();
+        const githubWorkspace = currentWorkspace
+            ? currentWorkspace
+            : (_b = process.env['GITHUB_WORKSPACE']) !== null && _b !== void 0 ? _b : process.cwd();
         const result = crypto.createHash('sha256');
         let count = 0;
         try {
