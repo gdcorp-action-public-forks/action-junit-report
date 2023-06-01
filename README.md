@@ -73,7 +73,7 @@ jobs:
 
 | **Input**      | **Description**                                                                                                                                                       |
 |----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `report_paths`    | **Required**. [Glob](https://github.com/actions/toolkit/tree/master/packages/glob) expression to junit report paths. The default is `**/junit-reports/TEST-*.xml`. |
+| `report_paths`    | **Required**. [Glob](https://github.com/actions/toolkit/tree/master/packages/glob) expression to junit report paths. Defaults to: `**/junit-reports/TEST-*.xml`.   |
 | `token`           | Optional. GitHub token for creating a check run. Set to `${{ github.token }}` by default.                                                                          |
 | `test_files_prefix` | Optional. Prepends the provided prefix to test file paths within the report when annotating on GitHub.                                                           |
 | `exclude_sources` | Optional. Provide `,` seperated array of folders to ignore for source lookup. Defaults to: `/build/,/__pycache__/`                                                 |
@@ -82,6 +82,7 @@ jobs:
 | `commit`          | Optional. The commit SHA to update the status. This is useful when you run it with `workflow_run`.                                                                 |
 | `fail_on_failure` | Optional. Fail the build in case of a test failure.                                                                                                                |
 | `require_tests`   | Optional. Fail if no test are found.                                                                                                                               |
+| `require_passed_tests`   | Optional. Fail if no passed test are found. (This is stricter than `require_tests`, which accepts skipped tests).                                           |
 | `include_passed`   | Optional. By default the action will skip passed items for the annotations. Enable this flag to include them.                                                                                                                               |
 | `check_retries`         | Optional. If a testcase is retried, ignore the original failure.                                                                                             |
 | `check_title_template`  | Optional. Template to configure the title format. Placeholders: {{FILE_NAME}}, {{SUITE_NAME}}, {{TEST_NAME}}.                                                |
@@ -95,6 +96,15 @@ jobs:
 | `follow_symlink`    | Optional. Enables to follow symlinks when searching test files via the globber. Defaults to `false`.                           |
 | `job_name`        | Optional. Specify the name of a check to update                                                                                                                    |
 | `annotations_limit` | Optional. Specify the limit for annotations. This will also interrupt parsing all test-suites if the limit is reached. Defaults to: `No Limit`.                                              |
+
+<details><summary><b>Common `report_paths`</b></summary>
+<p>
+
+- Surefire: 
+`**/target/surefire-reports/TEST-*.xml`
+
+</p>
+</details>
 
 ### Action outputs
 
