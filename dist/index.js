@@ -115,7 +115,7 @@ function attachSummary(testResults, detailedSummary, includePassed) {
                 { data: '', header: true },
                 { data: 'Tests', header: true },
                 { data: 'Passed ✅', header: true },
-                { data: 'Skipped ↪️', header: true },
+                { data: 'Skipped ⏭️', header: true },
                 { data: 'Failed ❌', header: true }
             ]
         ];
@@ -147,7 +147,11 @@ function attachSummary(testResults, detailedSummary, includePassed) {
                         detailsTable.push([
                             `${testResult.checkName}`,
                             `${annotation.title}`,
-                            `${annotation.annotation_level === 'notice' ? '✅ pass' : `❌ ${annotation.annotation_level}`}`
+                            `${annotation.status === 'success'
+                                ? '✅ pass'
+                                : annotation.status === 'skipped'
+                                    ? `⏭️ skipped`
+                                    : `❌ ${annotation.annotation_level}`}`
                         ]);
                     }
                 }
@@ -444,21 +448,16 @@ function resolvePath(fileName, excludeSources, followSymlink = false) {
         });
         const searchPath = globber.getSearchPaths() ? globber.getSearchPaths()[0] : '';
         try {
-            for (var _d = true, _e = __asyncValues(globber.globGenerator()), _f; _f = yield _e.next(), _a = _f.done, !_a;) {
+            for (var _d = true, _e = __asyncValues(globber.globGenerator()), _f; _f = yield _e.next(), _a = _f.done, !_a; _d = true) {
                 _c = _f.value;
                 _d = false;
-                try {
-                    const result = _c;
-                    core.debug(`Matched file: ${result}`);
-                    const found = excludeSources.find(v => result.includes(v));
-                    if (!found) {
-                        const path = result.slice(searchPath.length + 1);
-                        core.debug(`Resolved path: ${path}`);
-                        return path;
-                    }
-                }
-                finally {
-                    _d = true;
+                const result = _c;
+                core.debug(`Matched file: ${result}`);
+                const found = excludeSources.find(v => result.includes(v));
+                if (!found) {
+                    const path = result.slice(searchPath.length + 1);
+                    core.debug(`Resolved path: ${path}`);
+                    return path;
                 }
             }
         }
@@ -571,8 +570,10 @@ suite, parentName, suiteRegex, annotatePassed = false, checkRetries = false, exc
             }
             for (const testcase of testcases) {
                 totalCount++;
-                const failed = testcase.failure || testcase.error;
-                const success = !failed;
+                const testFailure = testcase.failure || testcase.error; // test failed
+                const skip = testcase.skipped || testcase._attributes.status === 'disabled' || testcase._attributes.status === 'ignored';
+                const failed = testFailure && !skip; // test faiure, but was skipped -> don't fail if a ignored test failed
+                const success = !testFailure; // not a failure -> thus a success
                 // in some definitions `failure` may be an array
                 const failures = testcase.failure
                     ? Array.isArray(testcase.failure)
@@ -581,7 +582,7 @@ suite, parentName, suiteRegex, annotatePassed = false, checkRetries = false, exc
                     : undefined;
                 // the action only supports 1 failure per testcase
                 const failure = failures ? failures[0] : undefined;
-                if (testcase.skipped || testcase._attributes.status === 'disabled') {
+                if (skip) {
                     skipped++;
                 }
                 const stackTrace = ((failure && failure._cdata) ||
@@ -638,7 +639,8 @@ suite, parentName, suiteRegex, annotatePassed = false, checkRetries = false, exc
                     end_line: pos.line,
                     start_column: 0,
                     end_column: 0,
-                    annotation_level: success ? 'notice' : 'failure',
+                    annotation_level: success || skip ? 'notice' : 'failure',
+                    status: skip ? 'skipped' : success ? 'success' : 'failure',
                     title: escapeEmoji(title),
                     message: escapeEmoji(message),
                     raw_details: escapeEmoji(stackTrace)
@@ -661,7 +663,7 @@ suite, parentName, suiteRegex, annotatePassed = false, checkRetries = false, exc
  * Modification Copyright 2022 Mike Penz
  * https://github.com/mikepenz/action-junit-report/
  */
-function parseTestReports(checkName, summary, reportPaths, suiteRegex, annotatePassed = false, checkRetries = false, excludeSources, checkTitleTemplate = undefined, testFilesPrefix = '', transformer, followSymlink = false, annotationsLimit) {
+function parseTestReports(checkName, summary, reportPaths, suiteRegex, annotatePassed = false, checkRetries = false, excludeSources, checkTitleTemplate = undefined, testFilesPrefix = '', transformer = [], followSymlink = false, annotationsLimit = -1) {
     var _a, e_2, _b, _c;
     return __awaiter(this, void 0, void 0, function* () {
         core.debug(`Process test report for: ${reportPaths} (${checkName})`);
@@ -670,27 +672,22 @@ function parseTestReports(checkName, summary, reportPaths, suiteRegex, annotateP
         let totalCount = 0;
         let skipped = 0;
         try {
-            for (var _d = true, _e = __asyncValues(globber.globGenerator()), _f; _f = yield _e.next(), _a = _f.done, !_a;) {
+            for (var _d = true, _e = __asyncValues(globber.globGenerator()), _f; _f = yield _e.next(), _a = _f.done, !_a; _d = true) {
                 _c = _f.value;
                 _d = false;
-                try {
-                    const file = _c;
-                    core.debug(`Parsing report file: ${file}`);
-                    const { totalCount: c, skipped: s, annotations: a } = yield parseFile(file, suiteRegex, annotatePassed, checkRetries, excludeSources, checkTitleTemplate, testFilesPrefix, transformer, followSymlink, annotationsLimit);
-                    if (c === 0)
-                        continue;
-                    totalCount += c;
-                    skipped += s;
-                    annotations = annotations.concat(a);
-                    if (annotationsLimit > 0) {
-                        const count = annotations.filter(an => an.annotation_level === 'failure' || annotatePassed).length;
-                        if (count >= annotationsLimit) {
-                            break;
-                        }
+                const file = _c;
+                core.debug(`Parsing report file: ${file}`);
+                const { totalCount: c, skipped: s, annotations: a } = yield parseFile(file, suiteRegex, annotatePassed, checkRetries, excludeSources, checkTitleTemplate, testFilesPrefix, transformer, followSymlink, annotationsLimit);
+                if (c === 0)
+                    continue;
+                totalCount += c;
+                skipped += s;
+                annotations = annotations.concat(a);
+                if (annotationsLimit > 0) {
+                    const count = annotations.filter(an => an.annotation_level === 'failure' || annotatePassed).length;
+                    if (count >= annotationsLimit) {
+                        break;
                     }
-                }
-                finally {
-                    _d = true;
                 }
             }
         }
@@ -9624,8 +9621,11 @@ function fixResponseChunkedTransferBadEnding(request, errorCallback) {
 
 		if (headers['transfer-encoding'] === 'chunked' && !headers['content-length']) {
 			response.once('close', function (hadError) {
+				// tests for socket presence, as in some situations the
+				// the 'socket' event is not triggered for the request
+				// (happens in deno), avoids `TypeError`
 				// if a data listener is still present we didn't end cleanly
-				const hasDataListener = socket.listenerCount('data') > 0;
+				const hasDataListener = socket && socket.listenerCount('data') > 0;
 
 				if (hasDataListener && !hadError) {
 					const err = new Error('Premature close');

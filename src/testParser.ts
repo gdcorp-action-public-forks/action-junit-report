@@ -28,6 +28,7 @@ export interface Annotation {
   start_column: number
   end_column: number
   annotation_level: 'failure' | 'notice' | 'warning'
+  status: 'success' | 'failure' | 'skipped'
   title: string
   message: string
   raw_details: string
@@ -277,8 +278,11 @@ async function parseSuite(
     for (const testcase of testcases) {
       totalCount++
 
-      const failed = testcase.failure || testcase.error
-      const success = !failed
+      const testFailure = testcase.failure || testcase.error // test failed
+      const skip =
+        testcase.skipped || testcase._attributes.status === 'disabled' || testcase._attributes.status === 'ignored'
+      const failed = testFailure && !skip // test faiure, but was skipped -> don't fail if a ignored test failed
+      const success = !testFailure // not a failure -> thus a success
 
       // in some definitions `failure` may be an array
       const failures = testcase.failure
@@ -289,7 +293,7 @@ async function parseSuite(
       // the action only supports 1 failure per testcase
       const failure = failures ? failures[0] : undefined
 
-      if (testcase.skipped || testcase._attributes.status === 'disabled') {
+      if (skip) {
         skipped++
       }
       const stackTrace: string = (
@@ -364,7 +368,8 @@ async function parseSuite(
         end_line: pos.line,
         start_column: 0,
         end_column: 0,
-        annotation_level: success ? 'notice' : 'failure',
+        annotation_level: success || skip ? 'notice' : 'failure', // a skipped test shall not fail the run
+        status: skip ? 'skipped' : success ? 'success' : 'failure',
         title: escapeEmoji(title),
         message: escapeEmoji(message),
         raw_details: escapeEmoji(stackTrace)
@@ -398,9 +403,9 @@ export async function parseTestReports(
   excludeSources: string[],
   checkTitleTemplate: string | undefined = undefined,
   testFilesPrefix = '',
-  transformer: Transformer[],
+  transformer: Transformer[] = [],
   followSymlink = false,
-  annotationsLimit: number
+  annotationsLimit = -1
 ): Promise<TestResult> {
   core.debug(`Process test report for: ${reportPaths} (${checkName})`)
   const globber = await glob.create(reportPaths, {followSymbolicLinks: followSymlink})
