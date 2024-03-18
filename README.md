@@ -59,11 +59,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
       - name: Build and Run Tests
         run: # execute your tests generating test results
       - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v3
+        uses: mikepenz/action-junit-report@v4
         if: success() || failure() # always run even if the previous step fails
         with:
           report_paths: '**/build/test-results/test/TEST-*.xml'
@@ -87,6 +87,7 @@ jobs:
 | `check_retries`         | Optional. If a testcase is retried, ignore the original failure.                                                                                             |
 | `check_title_template`  | Optional. Template to configure the title format. Placeholders: {{FILE_NAME}}, {{SUITE_NAME}}, {{TEST_NAME}}.                                                |
 | `summary`         | Optional. Additional text to summary output                                                                                                                        |
+| `check_annotations`         | Optional. Defines if the checks will include annotations. If disabled skips all annotations for the check. (This does not affect `annotate_only`, which uses no checks).      |
 | `update_check`    | Optional. Uses an alternative API to update checks, use for cases with more than 50 annotations. Default: `false`.                                                                  |
 | `annotate_only`   | Optional. Will only annotate the results on the files, won't create a check run. Defaults to `false`.                                                                                  |
 | `transformers`    | Optional. Array of `Transformer`s offering the ability to adjust the fileName. Defaults to: `[{"searchValue":"::","replaceValue":"/"}]`                            |
@@ -121,7 +122,7 @@ you can increase the memory allocation by setting an environment variable
 
 ```yaml
 - name: Publish Test Report
-  uses: mikepenz/action-junit-report@v3
+  uses: mikepenz/action-junit-report@v4
   env:
     NODE_OPTIONS: "--max_old_space_size=4096"
   if: success() || failure() # always run even if the previous step fails
@@ -260,7 +261,7 @@ Original idea and GitHub Actions by: https://github.com/ScaCap/action-surefire-r
 
 ## License
 
-    Copyright (C) 2022 Mike Penz
+    Copyright (C) 2023 Mike Penz
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.

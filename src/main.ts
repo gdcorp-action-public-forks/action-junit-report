@@ -1,8 +1,8 @@
 import * as core from '@actions/core'
 import * as github from '@actions/github'
-import {annotateTestResult, attachSummary} from './annotator'
+import {annotateTestResult, attachSummary, buildSummaryTables} from './annotator'
 import {parseTestReports, TestResult} from './testParser'
-import {readTransformers, retrieve} from './utils'
+import {buildTable, readTransformers, retrieve} from './utils'
 
 export async function run(): Promise<void> {
   try {
@@ -16,6 +16,7 @@ export async function run(): Promise<void> {
 
     const annotateOnly = core.getInput('annotate_only') === 'true'
     const updateCheck = core.getInput('update_check') === 'true'
+    const checkAnnotations = core.getInput('check_annotations') === 'true'
     const commit = core.getInput('commit')
     const failOnFailure = core.getInput('fail_on_failure') === 'true'
     const requireTests = core.getInput('require_tests') === 'true'
@@ -37,6 +38,7 @@ export async function run(): Promise<void> {
     const transformers = readTransformers(core.getInput('transformers', {trimWhitespace: true}))
     const followSymlink = core.getBooleanInput('follow_symlink')
     const annotationsLimit = Number(core.getInput('annotations_limit') || -1)
+    const truncateStackTraces = core.getBooleanInput('truncate_stack_traces')
 
     if (excludeSources.length === 0) {
       excludeSources = ['/build/', '/__pycache__/']
@@ -55,10 +57,11 @@ export async function run(): Promise<void> {
       skipped: 0,
       failed: 0,
       passed: 0,
+      foundFiles: 0,
       annotations: []
     }
 
-    core.info(`Retrieved ${reportsCount} reports to process.`)
+    core.info(`Preparing ${reportsCount} report as configured.`)
 
     for (let i = 0; i < reportsCount; i++) {
       const testResult = await parseTestReports(
@@ -73,14 +76,18 @@ export async function run(): Promise<void> {
         retrieve('testFilesPrefix', testFilesPrefix, i, reportsCount),
         transformers,
         followSymlink,
-        annotationsLimit
+        annotationsLimit,
+        truncateStackTraces
       )
+
+      core.info(`Found and parsed ${testResult.foundFiles} test report files.`)
 
       mergedResult.totalCount += testResult.totalCount
       mergedResult.skipped += testResult.skipped
       mergedResult.failed += testResult.failed
       mergedResult.passed += testResult.passed
       testResults.push(testResult)
+
     }
 
     core.setOutput('total', mergedResult.totalCount)
@@ -107,7 +114,16 @@ export async function run(): Promise<void> {
 
     try {
       for (const testResult of testResults) {
-        await annotateTestResult(testResult, token, headSha, annotateOnly, updateCheck, annotateNotice, jobName)
+        await annotateTestResult(
+          testResult,
+          token,
+          headSha,
+          checkAnnotations,
+          annotateOnly,
+          updateCheck,
+          annotateNotice,
+          jobName
+        )
       }
     } catch (error) {
       core.error(`❌ Failed to create checks using the provided token. (${error})`)
@@ -117,9 +133,10 @@ export async function run(): Promise<void> {
     }
 
     const supportsJobSummary = process.env['GITHUB_STEP_SUMMARY']
+    const [table, detailTable] = buildSummaryTables(testResults, includePassed)
     if (jobSummary && supportsJobSummary) {
       try {
-        await attachSummary(testResults, detailedSummary, includePassed)
+        await attachSummary(table, detailedSummary, detailTable)
       } catch (error) {
         core.error(`❌ Failed to set the summary using the provided token. (${error})`)
       }
@@ -128,6 +145,9 @@ export async function run(): Promise<void> {
     } else {
       core.info('⏩ Skipped creation of job summary')
     }
+
+    core.setOutput('summary', buildTable(table))
+    core.setOutput('detailed_summary', buildTable(detailTable))
 
     if (failOnFailure && conclusion === 'failure') {
       core.setFailed(`❌ Tests reported ${mergedResult.failed} failures`)

@@ -18,6 +18,7 @@ export interface TestResult {
   skipped: number
   failed: number
   passed: number
+  foundFiles: number
   annotations: Annotation[]
 }
 
@@ -146,12 +147,25 @@ export async function parseFile(
   testFilesPrefix = '',
   transformer: Transformer[] = [],
   followSymlink = false,
-  annotationsLimit = -1
+  annotationsLimit = -1,
+  truncateStackTraces = true
 ): Promise<InternalTestResult> {
   core.debug(`Parsing file ${file}`)
 
   const data: string = fs.readFileSync(file, 'utf8')
-  const report = JSON.parse(parser.xml2json(data, {compact: true}))
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let report: any
+  try {
+    report = JSON.parse(parser.xml2json(data, {compact: true}))
+  } catch (error) {
+    core.error(`⚠️ Failed to parse file (${file}) with error ${error}`)
+    return {
+      totalCount: 0,
+      skipped: 0,
+      annotations: []
+    }
+  }
 
   return parseSuite(
     report,
@@ -164,7 +178,8 @@ export async function parseFile(
     testFilesPrefix,
     transformer,
     followSymlink,
-    annotationsLimit
+    annotationsLimit,
+    truncateStackTraces
   )
 }
 
@@ -184,7 +199,8 @@ async function parseSuite(
   testFilesPrefix = '',
   transformer: Transformer[],
   followSymlink: boolean,
-  annotationsLimit: number
+  annotationsLimit: number,
+  truncateStackTraces: boolean
 ): Promise<InternalTestResult> {
   let totalCount = 0
   let skipped = 0
@@ -199,8 +215,8 @@ async function parseSuite(
       ? suite.testsuite
       : [suite.testsuite]
     : Array.isArray(suite.testsuites.testsuite)
-    ? suite.testsuites.testsuite
-    : [suite.testsuites.testsuite]
+      ? suite.testsuites.testsuite
+      : [suite.testsuites.testsuite]
 
   for (const testsuite of testsuites) {
     if (!testsuite) {
@@ -230,7 +246,8 @@ async function parseSuite(
       testFilesPrefix,
       transformer,
       followSymlink,
-      annotationsLimit
+      annotationsLimit,
+      truncateStackTraces
     )
     totalCount += res.totalCount
     skipped += res.skipped
@@ -248,8 +265,8 @@ async function parseSuite(
     let testcases = Array.isArray(testsuite.testcase)
       ? testsuite.testcase
       : testsuite.testcase
-      ? [testsuite.testcase]
-      : []
+        ? [testsuite.testcase]
+        : []
 
     if (checkRetries) {
       // identify duplicates, in case of flaky tests, and remove them
@@ -306,10 +323,12 @@ async function parseSuite(
         .toString()
         .trim()
 
+      const stackTraceMessage = truncateStackTraces ? stackTrace.split('\n').slice(0, 2).join('\n') : stackTrace
+
       const message: string = (
         (failure && failure._attributes && failure._attributes.message) ||
         (testcase.error && testcase.error._attributes && testcase.error._attributes.message) ||
-        stackTrace.split('\n').slice(0, 2).join('\n') ||
+        stackTraceMessage ||
         testcase._attributes.name
       ).trim()
 
@@ -360,7 +379,10 @@ async function parseSuite(
       // optionally attach the prefix to the path
       resolvedPath = testFilesPrefix ? pathHelper.join(testFilesPrefix, resolvedPath) : resolvedPath
 
-      core.info(`${resolvedPath}:${pos.line} | ${message.replace(/\n/g, ' ')}`)
+      // fish the time-taken out of the test case attributes, if present
+      const testTime = testcase._attributes.time === undefined ? '' : ` (${testcase._attributes.time}s)`
+
+      core.info(`${resolvedPath}:${pos.line} | ${message.split('\n', 1)[0]}${testTime}`)
 
       annotations.push({
         path: resolvedPath,
@@ -405,14 +427,17 @@ export async function parseTestReports(
   testFilesPrefix = '',
   transformer: Transformer[] = [],
   followSymlink = false,
-  annotationsLimit = -1
+  annotationsLimit = -1,
+  truncateStackTraces = true
 ): Promise<TestResult> {
   core.debug(`Process test report for: ${reportPaths} (${checkName})`)
   const globber = await glob.create(reportPaths, {followSymbolicLinks: followSymlink})
   let annotations: Annotation[] = []
   let totalCount = 0
   let skipped = 0
+  let foundFiles = 0
   for await (const file of globber.globGenerator()) {
+    foundFiles++
     core.debug(`Parsing report file: ${file}`)
 
     const {
@@ -429,7 +454,8 @@ export async function parseTestReports(
       testFilesPrefix,
       transformer,
       followSymlink,
-      annotationsLimit
+      annotationsLimit,
+      truncateStackTraces
     )
     if (c === 0) continue
     totalCount += c
@@ -455,6 +481,7 @@ export async function parseTestReports(
     skipped,
     failed,
     passed,
+    foundFiles,
     annotations
   }
 }
